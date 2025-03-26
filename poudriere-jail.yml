@@ -1,0 +1,86 @@
+---
+- name: Setup poudriere jail container on pi-master
+  hosts: pi_master
+  become: true
+  vars:
+    jail_ip: "127.0.1.1"
+    jail_name: "poudriere"
+    jail_root: "/usr/jails/poudriere"
+    poudriere_path: "{{ jail_root }}/usr/local/poudriere"
+
+  tasks:
+    - name: Install ezjail
+      pkgng:
+        name: ezjail
+        state: present
+
+    - name: Initialize ezjail environment
+      command: ezjail-admin install -m
+      args:
+        creates: /usr/jails/basejail
+
+    - name: Create poudriere jail
+      command: ezjail-admin create {{ jail_name }} "lo1|{{ jail_ip }}"
+      args:
+        creates: "{{ jail_root }}"
+
+    - name: Start poudriere jail
+      command: ezjail-admin start {{ jail_name }}
+
+    - name: Install required packages inside jail
+      command: jexec {{ jail_name }} pkg install -y poudriere nfs-utils ccache
+
+    - name: Create poudriere directories inside jail
+      command: jexec {{ jail_name }} mkdir -p /usr/local/poudriere/{{ item }}
+      loop:
+        - ports
+        - data/distfiles
+        - data/packages
+        - data/ccache
+        - data/wrkdirs
+
+    - name: Configure poudriere.conf inside jail
+      copy:
+        dest: "{{ jail_root }}/usr/local/etc/poudriere.conf"
+        content: |
+          NO_ZFS=yes
+          PARALLEL_BUILD=yes
+          USE_TMPFS=all
+          NOLINUX=yes
+          DISTFILES_CACHE=/usr/local/poudriere/data/distfiles
+          CCACHE_DIR=/usr/local/poudriere/data/ccache
+          WITH_CCACHE_BUILD=yes
+          PKG_REPO_SIGNING_KEY=""
+
+    - name: Export poudriere over NFS from jail
+      blockinfile:
+        path: /etc/exports
+        block: |
+          {{ poudriere_path }} -alldirs -maproot=root -network 192.168.0.0 -mask 255.255.255.0
+
+    - name: Enable NFS server and mountd
+      sysrc:
+        name: "{{ item }}"
+        value: "YES"
+      loop:
+        - nfs_server_enable
+        - mountd_enable
+
+    - name: Set mountd flags to allow NFS jail export
+      sysrc:
+        name: mountd_flags
+        value: "-r"
+
+    - name: Restart NFS services
+      service:
+        name: "{{ item }}"
+        state: restarted
+      loop:
+        - nfsd
+        - mountd
+
+    - name: Ensure poudriere.d directory exists in jail
+      file:
+        path: "{{ jail_root }}/usr/local/etc/poudriere.d"
+        state: directory
+        mode: "0755"

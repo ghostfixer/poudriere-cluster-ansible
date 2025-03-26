@@ -1,0 +1,72 @@
+---
+- name: Run test Poudriere build inside jail and publish report
+  hosts: pi_master
+  become: true
+  vars:
+    jail_name: arm64-14
+    ports_tree: default
+    test_package: ports-mgmt/pkg
+    pkglist_path: /tmp/pkglist.txt
+    poudriere_logdir: /usr/jails/poudriere/usr/local/poudriere/data/logs/bulk
+    poudriere_latest_log: "{{ poudriere_logdir }}/{{ jail_name }}/{{ ports_tree }}/latest"
+    web_root: /usr/local/www/poudriere-report
+
+  tasks:
+    - name: Ensure test package list file exists
+      copy:
+        dest: "{{ pkglist_path }}"
+        content: "{{ test_package }}\n"
+        mode: "0644"
+
+    - name: Start test build
+      command: >
+        jexec poudriere poudriere bulk
+        -j {{ jail_name }}
+        -p {{ ports_tree }}
+        -f {{ pkglist_path }}
+        -J 4
+      register: poudriere_build
+      ignore_errors: true
+
+    - name: Show Poudriere build output
+      debug:
+        var: poudriere_build.stdout_lines
+
+    - name: Check for build success message
+      shell: "grep -q 'build of pkg completed' {{ poudriere_latest_log }}/*.log"
+      register: build_success
+      failed_when: build_success.rc != 0
+      changed_when: false
+
+    - name: Fail if package was not built successfully
+      fail:
+        msg: "Poudriere build failed. Check logs in {{ poudriere_latest_log }}."
+      when: build_success.rc != 0
+
+    - name: Notify handler to publish HTML build report
+      ansible.builtin.meta: flush_handlers
+
+  handlers:
+    - name: Publish build report to nginx
+      become: true
+      block:
+        - name: Clear previous report
+          file:
+            path: "{{ web_root }}"
+            state: absent
+
+        - name: Recreate report directory
+          file:
+            path: "{{ web_root }}"
+            state: directory
+            mode: "0755"
+
+        - name: Copy latest HTML build report to nginx web root
+          shell: |
+            cp -R {{ poudriere_latest_log }}/* {{ web_root }}/
+          args:
+            warn: false
+
+        - name: Confirm report deployed
+          debug:
+            msg: "Build report deployed to http://<pi-master-ip>/"

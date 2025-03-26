@@ -1,0 +1,69 @@
+---
+- name: Set up nginx to serve Poudriere build reports
+  hosts: pi_master
+  become: true
+  vars:
+    web_root: /usr/local/www/poudriere-report
+    poudriere_log_root: /usr/jails/poudriere/usr/local/poudriere/data/logs
+    poudriere_latest_log: "{{ poudriere_log_root }}/bulk/{{ jail_name }}/{{ ports_tree }}/latest"
+
+    jail_name: arm64-14
+    ports_tree: default
+
+  tasks:
+    - name: Install nginx
+      pkgng:
+        name: nginx
+        state: present
+
+    - name: Enable nginx in rc.conf
+      sysrc:
+        name: nginx_enable
+        value: YES
+
+    - name: Create web root directory
+      file:
+        path: "{{ web_root }}"
+        state: directory
+        mode: "0755"
+
+    - name: Configure nginx to serve poudriere reports
+      copy:
+        dest: /usr/local/etc/nginx/nginx.conf
+        content: |
+          worker_processes  1;
+
+          events {
+              worker_connections  1024;
+          }
+
+          http {
+              include       mime.types;
+              default_type  application/octet-stream;
+
+              sendfile        on;
+
+              server {
+                  listen       80;
+                  server_name  poudriere.local;
+
+                  location / {
+                      root   {{ web_root }};
+                      autoindex on;
+                      index  index.html;
+                  }
+              }
+          }
+
+    - name: Start or restart nginx
+      service:
+        name: nginx
+        state: restarted
+
+    - name: Copy latest HTML report to web root (if available)
+      shell: |
+        cp -R {{ poudriere_latest_log }}/.build.html {{ web_root }}/
+        cp -R {{ poudriere_latest_log }}/.latest-per-pkg/* {{ web_root }}/
+      args:
+        warn: false
+      ignore_errors: true

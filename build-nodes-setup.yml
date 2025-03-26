@@ -1,0 +1,43 @@
+---
+- name: Configure build nodes for Poudriere cluster
+  hosts: pi_build_nodes
+  become: true
+  vars:
+    poudriere_nfs_path: "/usr/local/poudriere"
+    poudriere_nfs_server: "pi-master"
+    poudriere_fstab_line: "pi-master:/usr/jails/poudriere/usr/local/poudriere /usr/local/poudriere nfs rw 0 0"
+
+  tasks:
+    - name: Install required packages
+      pkgng:
+        name:
+          - poudriere
+          - nfs-utils
+          - ccache
+        state: present
+
+    - name: Create mount point
+      file:
+        path: "{{ poudriere_nfs_path }}"
+        state: directory
+        mode: "0755"
+
+    - name: Ensure NFS mount is present in /etc/fstab
+      lineinfile:
+        path: /etc/fstab
+        line: "{{ poudriere_fstab_line }}"
+        create: yes
+        state: present
+
+    - name: Mount NFS share
+      command: mount -a
+
+    - name: Ensure poudriere can access NFS share
+      stat:
+        path: "{{ poudriere_nfs_path }}/ports"
+      register: poudriere_nfs_test
+
+    - name: Fail if NFS mount did not work
+      fail:
+        msg: "NFS mount failed or is not available."
+      when: not poudriere_nfs_test.stat.exists
