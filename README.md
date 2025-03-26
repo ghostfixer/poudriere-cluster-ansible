@@ -1,6 +1,6 @@
 # Raspberry Pi Poudriere Cluster with Ansible + Webhook
 
-This repository automates setting up a FreeBSD-based Raspberry Pi 4 cluster for building FreeBSD packages with Poudriere. It includes:
+This repository automates setting up a FreeBSD-based Raspberry Pi 5 cluster for building FreeBSD packages with Poudriere. It includes:
 
 - A jail-based poudriere build container on the master node
 - Build nodes mounting NFS exports from the master
@@ -9,7 +9,7 @@ This repository automates setting up a FreeBSD-based Raspberry Pi 4 cluster for 
 
 ## Requirements
 
-- Raspberry Pi 4 devices with FreeBSD installed
+- Raspberry Pi 5 devices with FreeBSD installed
 - One `pi-master`, three build nodes (`pi-node1`, `pi-node2`, `pi-node3`)
 - SSH access set up between nodes
 - Ansible and Go installed on `pi-master`
