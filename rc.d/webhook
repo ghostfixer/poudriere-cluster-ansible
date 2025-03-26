@@ -1,0 +1,24 @@
+#!/bin/sh
+
+# PROVIDE: webhook
+# REQUIRE: DAEMON
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name=webhook
+rcvar=webhook_enable
+
+load_rc_config $name
+
+: ${webhook_enable:=no}
+: ${webhook_user:=root}
+: ${webhook_command:=/usr/local/bin/webhook}
+: ${webhook_env:=WEBHOOK_SECRET=yoursecretvalue}
+
+pidfile="/var/run/${name}.pid"
+procname="$webhook_command"
+command="/usr/sbin/daemon"
+command_args="-f -p $pidfile -o /var/log/webhook.log -u $webhook_user env $webhook_env $webhook_command"
+
+run_rc_command "$1"
